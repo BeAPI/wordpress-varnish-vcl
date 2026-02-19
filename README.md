@@ -51,6 +51,17 @@ All configuration is at the top of `default.vcl`:
 - **Purge ACL**: Add allowed IPs in the `acl purge_acl` block for PURGE/BAN.
 - **Debug**: Send an `X-Debug: 1` request header to see `X-Cacheable` in the response.
 
+### Default TTL when backend has no Cache-Control
+
+By default, when the backend sends **no** `Cache-Control` header, the VCL forces a 1 hour TTL so the response is cached. This avoids uncacheable pages when WordPress (or the backend) omits cache headers.
+
+To **disable** this and only cache responses that explicitly send cache headers (or a positive TTL):
+
+1. In `default.vcl`, in `vcl_backend_response`, find the block `# -- Default TTL when the backend sends no Cache-Control --`.
+2. Comment out the entire `if (!beresp.http.Cache-Control) { ... }` block (the three lines inside the `if` and the `if` itself).
+
+After disabling, responses without `Cache-Control` keep `beresp.ttl = 0` and are marked uncacheable by the next block; they will not be stored in the cache.
+
 ## imgproxy (optional)
 
 Image processing via [imgproxy](https://imgproxy.net/) is supported but **disabled by default**. When enabled, WordPress upload images (`content/uploads/...`) are routed to a dedicated imgproxy backend and URLs are rewritten to the imgproxy format automatically.

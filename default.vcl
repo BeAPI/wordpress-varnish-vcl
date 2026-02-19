@@ -365,7 +365,11 @@ sub vcl_backend_response {
         return (deliver);
     }
 
-    # -- Default to 1h when the backend sends no Cache-Control --
+    # -- Default TTL when the backend sends no Cache-Control --
+    # When the backend omits Cache-Control, we force a 1h TTL so responses are cached.
+    # To disable: comment out the block below. Responses without Cache-Control will then
+    # keep beresp.ttl = 0 and be marked uncacheable by the "beresp.ttl <= 0s" block.
+    # See README "Default TTL when backend has no Cache-Control".
     if (!beresp.http.Cache-Control) {
         set beresp.ttl = 1h;
         set beresp.http.X-Cacheable = "YES:Forced";
