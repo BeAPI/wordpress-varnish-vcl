@@ -32,6 +32,22 @@ backend backend1 {
     }
 }
 
+# Uncomment to enable imgproxy image processing (see README).
+# backend imgproxy {
+#     .host = "127.0.0.1";
+#     .port = "8089";
+#     .first_byte_timeout = 60s;
+#     .connect_timeout    = 5s;
+#     .between_bytes_timeout = 2s;
+#     .probe = {
+#         .url = "/health";
+#         .interval = 10s;
+#         .timeout = 5s;
+#         .window = 5;
+#         .threshold = 3;
+#     }
+# }
+
 sub vcl_init {
     new backends = directors.round_robin();
     backends.add_backend(backend1);
@@ -44,6 +60,14 @@ sub vcl_init {
 sub vcl_recv {
     # -- Backend selection --
     set req.backend_hint = backends.backend();
+
+    # -- Route WordPress upload images through imgproxy --
+    # Uncomment to enable (requires the imgproxy backend above).
+    # Matches content/uploads/ paths with image extensions supported by imgproxy Community.
+    # URLs may include processing params before the path (e.g. /rs:fill:500:500/content/uploads/...).
+    # if (req.url ~ "^/(.*)?(content/uploads/(sites/)?[0-9]+/.+)\.(jpg|jpeg|png|webp|gif|avif|tiff|tif|bmp|ico|heic|heif|svg)(\?.*)?$") {
+    #     set req.backend_hint = imgproxy;
+    # }
 
     # -- X-Forwarded-For: keep only the first (client) IP behind a trusted proxy --
     if (req.http.X-Forwarded-For) {
@@ -220,6 +244,37 @@ sub vcl_recv {
 }
 
 # ----------------------------------------------------------------------
+# vcl_backend_fetch
+# ----------------------------------------------------------------------
+
+# Uncomment to enable imgproxy URL rewriting (requires the imgproxy backend and routing above).
+# sub vcl_backend_fetch {
+#     # -- Rewrite URLs to imgproxy format before sending to the imgproxy backend --
+#     if (bereq.backend == imgproxy) {
+#         unset bereq.http.If-Modified-Since;
+#         unset bereq.http.ETag;
+#         unset bereq.http.Cache-Control;
+#
+#         # With processing params (e.g. /rs:fill:500:500/content/uploads/sites/2/img.jpg)
+#         if (bereq.url ~ "^/(.+)(/content/uploads/sites/[0-9]+/.+)$") {
+#             set bereq.url = regsub(bereq.url, "^/(.+)(/content/uploads/sites/[0-9]+/.+)$", "/insecure/\1/plain/local://\2");
+#         }
+#         # Without processing params, multisite (e.g. /content/uploads/sites/2/img.jpg)
+#         elsif (bereq.url ~ "^(/content/uploads/sites/[0-9]+/.+)$") {
+#             set bereq.url = regsub(bereq.url, "^(/content/uploads/sites/[0-9]+/.+)$", "/insecure/plain/local://\1");
+#         }
+#         # With processing params, single site (e.g. /rs:fill:500:500/content/uploads/2025/10/img.jpg)
+#         elsif (bereq.url ~ "^/(.+)(/content/uploads/[0-9]+/.+)$") {
+#             set bereq.url = regsub(bereq.url, "^/(.+)(/content/uploads/[0-9]+/.+)$", "/insecure/\1/plain/local://\2");
+#         }
+#         # Without processing params, single site (e.g. /content/uploads/2025/10/img.jpg)
+#         elsif (bereq.url ~ "^(/content/uploads/[0-9]+/.+)$") {
+#             set bereq.url = regsub(bereq.url, "^(/content/uploads/[0-9]+/.+)$", "/insecure/plain/local://\1");
+#         }
+#     }
+# }
+
+# ----------------------------------------------------------------------
 # vcl_hash
 # ----------------------------------------------------------------------
 
@@ -228,13 +283,12 @@ sub vcl_hash {
     Cache key for pages:
     - Proto (http/https)
     - Content encoding (br, gzip — normalized in vcl_recv)
-    - Cookie (only when WordPress auth cookies are present)
     - URL + host (Varnish default)
 
     Cache key for static files:
     - Proto (http/https)
     - Content encoding (br, gzip — normalized in vcl_recv)
-    - URL path only (no cookie, no host — shared across domains)
+    - URL path only (no host — shared across domains)
     **/
 
     # -- Protocol variation --
@@ -249,11 +303,19 @@ sub vcl_hash {
 
     # -- Page vs static file hashing --
     # Extension list must match the vcl_recv static block.
-    if (req.url !~ "\.(7z|avi|avif|bmp|bz2|css|csv|doc|docx|eot|flac|flv|gif|gz|ico|jpeg|jpg|js|less|mka|mkv|mov|mp3|mp4|mpeg|mpg|odt|ogg|ogm|opus|otf|pdf|png|ppt|pptx|rar|rtf|svg|svgz|swf|tar|tbz|tgz|ttf|txt|txz|wav|webm|webp|woff|woff2|xls|xlsx|xml|xz|zip)(\?.*)?$") {
-        if (req.http.Cookie ~ "wp-postpass_|wordpress_logged_in_") {
-            hash_data(req.http.Cookie);
-        }
-    } else {
+    #
+    # By default, static files are hashed by URL path only (no host), so the same
+    # asset served from domain1.com and domain2.com shares a single cache entry.
+    # This is optimal for WordPress multisite with shared uploads (e.g. /app/uploads/).
+    #
+    # To cache static files per domain instead, add hash_data(req.http.host) below:
+    #       hash_data(req.url);
+    #       hash_data(req.http.host);
+    #       return (lookup);
+    #
+    # Non-static files fall through without returning, so Varnish appends its
+    # default hash (host + URL) automatically.
+    if (req.url ~ "\.(7z|avi|avif|bmp|bz2|css|csv|doc|docx|eot|flac|flv|gif|gz|ico|jpeg|jpg|js|less|mka|mkv|mov|mp3|mp4|mpeg|mpg|odt|ogg|ogm|opus|otf|pdf|png|ppt|pptx|rar|rtf|svg|svgz|swf|tar|tbz|tgz|ttf|txt|txz|wav|webm|webp|woff|woff2|xls|xlsx|xml|xz|zip)(\?.*)?$") {
         hash_data(req.url);
         return (lookup);
     }

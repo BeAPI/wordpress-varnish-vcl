@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebSockets pipe support
 - Tracking parameter stripping (UTM, fbclid, gclid, etc.)
 - Grace period and 500/404 caching behavior
+- **imgproxy integration**: Dedicated backend and URL rewriting for WordPress upload images via imgproxy (supports processing params like `rs:fill:...`)
 - README, CHANGELOG, and GPL v2 license
 
 ### Changed
