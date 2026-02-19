@@ -1,6 +1,6 @@
 # WordPress Varnish VCL
 
-Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Handles cache rules, purge, static files, and common WordPress cookies/headers.
+Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Everything lives in a single `default.vcl` file for simplicity.
 
 ## Features
 
@@ -24,25 +24,17 @@ Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Handles
 
 ```
 .
-├── default.vcl      # Main entry, includes config and libs
-├── common.vcl       # WordPress-specific recv/hash/backend_response/deliver/pipe
-├── conf/
-│   ├── acl.vcl      # Purge ACL (localhost, 127.0.0.1, ::1)
-│   └── backend.vcl  # Backend definition(s)
-└── lib/
-    ├── xforward.vcl # X-Forwarded-* handling
-    ├── purge.vcl    # PURGE/BAN logic
-    ├── static.vcl   # Static file handling
-    ├── bigfiles.vcl
+├── default.vcl      # Single-file VCL: ACL, backend, recv, hash, backend_response, deliver, pipe
+├── CHANGELOG.md
+├── README.md
+└── LICENSE
 ```
 
 ## Installation
 
-1. Clone or copy this repo to your server (e.g. `/etc/varnish/`).
-2. Adjust `default.vcl` include paths if needed (defaults assume `/etc/varnish/`).
-3. Edit `conf/backend.vcl` with your WordPress backend host/port.
-4. Edit `conf/acl.vcl` to allow PURGE/BAN from your purge origin (e.g. WordPress server IP).
-5. Start or reload Varnish with this VCL:
+1. Copy `default.vcl` to your server (e.g. `/etc/varnish/default.vcl`).
+2. Edit the `backend` and `acl purge_acl` sections at the top of the file to match your environment.
+3. Start or reload Varnish:
 
    ```bash
    varnishd -f /etc/varnish/default.vcl
@@ -52,11 +44,11 @@ Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Handles
 
 ## Configuration
 
-- **Backend**: Set in `conf/backend.vcl`.
-- **Health check**: Adjust the `.probe` in `conf/backend.vcl` to match your backend (Host header, path, intervals).
-- **Purge ACL**: Add allowed IPs in `conf/acl.vcl` for PURGE/BAN.
+All configuration is at the top of `default.vcl`:
+
+- **Backend**: Adjust `.host`, `.port`, and `.probe` in the `backend backend1` block.
+- **Purge ACL**: Add allowed IPs in the `acl purge_acl` block for PURGE/BAN.
 - **Debug**: Send an `X-Debug: 1` request header to see `X-Cacheable` in the response.
-- **Paths**: If you don't use `/etc/varnish/`, update every `include` in `default.vcl`.
 
 ## Cache key (hash)
 

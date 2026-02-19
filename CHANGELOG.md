@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial VCL setup: `default.vcl`, `common.vcl`, `conf/` and `lib/` includes
+- Single-file VCL: all logic merged into `default.vcl` (removed `common.vcl`, `conf/`, `lib/`)
 - WordPress-specific cache rules (cookies, AJAX, auth, WooCommerce)
 - Purge/BAN support with ACL
 - Static and big files handling
@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **5xx caching**: Reduce TTL from 5m to 1m and grace from 1m to 30s to avoid masking persistent backend failures
 - **Debug headers**: `X-Cacheable` is now only returned when the request includes an `X-Debug` header (no longer leaks cache info in production)
 - **Backend health check**: Add `.probe` to backend definition for automatic health monitoring
+- **Backend timeouts**: Explicit `.first_byte_timeout` (300s), `.connect_timeout` (5s), `.between_bytes_timeout` (2s)
+- **Big files streaming**: Enable `do_stream` for files > 10 MB so Varnish does not buffer them entirely in memory
+- **Redirect port fix**: Strip backend port from `Location` header on 301/302 responses
+- **Vary: \***: Treat `Vary: *` backend responses as uncacheable
+- **Debug X-Cache**: Add `X-Cache: HIT/MISS` and `X-Cache-Hits` headers when `X-Debug` is present
 - **Purge ACL fallback**: Use `client.ip` instead of `0.0.0.0` as fallback when `X-Forwarded-For` is absent (works without a fronting proxy)
 
 ### Deprecated
@@ -33,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **`import header`**: Removed unused `header` vmod import from `default.vcl`
-- **`vcl 4.1` in common.vcl**: Removed duplicate version declaration (only needed in `default.vcl`)
+- **`import header`**: Removed unused `header` vmod import
+- **Multi-file structure**: Merged `common.vcl`, `conf/acl.vcl`, `conf/backend.vcl`, `lib/xforward.vcl`, `lib/purge.vcl`, `lib/bigfiles.vcl`, and `lib/static.vcl` into a single `default.vcl`
 
 ### Fixed
 
