@@ -388,11 +388,14 @@ sub vcl_backend_response {
 
     # -- Short-lived cache for 5xx errors --
     # Absorbs traffic spikes while the backend recovers.
+    # Only set TTL when the backend did not send Cache-Control and TTL is 0 (respect HTTP semantics).
     # Kept intentionally brief (1m TTL, 30s grace) to avoid masking persistent failures.
     if (beresp.status >= 500) {
-        set beresp.ttl = 1m;
-        set beresp.grace = 30s;
-        set beresp.http.X-Cacheable = "YES:500";
+        if (!beresp.http.Cache-Control && beresp.ttl <= 0s) {
+            set beresp.ttl = 1m;
+            set beresp.grace = 30s;
+            set beresp.http.X-Cacheable = "YES:500";
+        }
     }
 
     # -- Cache 404 responses normally (respecting backend headers) --
