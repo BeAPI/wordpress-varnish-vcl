@@ -7,6 +7,8 @@
 # being added twice.
 
 sub vcl_recv {
-  # keep only one ip : we can trust haproxy
-  set req.http.X-Forwarded-For = regsub(req.http.X-Forwarded-For, "^([^,]+).*", "\1");
+  # Keep only the first (client) IP when behind a trusted proxy (e.g. haproxy). Only set when present to avoid adding an empty header.
+  if (req.http.X-Forwarded-For) {
+    set req.http.X-Forwarded-For = regsub(req.http.X-Forwarded-For, "^([^,]+).*", "\1");
+  }
 }

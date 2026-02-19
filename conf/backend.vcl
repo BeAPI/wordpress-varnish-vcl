@@ -3,6 +3,13 @@ import directors;
 backend backend1 {
     .host = "127.0.0.1";
     .port = "8080";
+    .probe = {
+        .url = "/";
+        .interval = 10s;
+        .timeout = 5s;
+        .window = 5;
+        .threshold = 3;
+    }
 }
 
 sub vcl_init {

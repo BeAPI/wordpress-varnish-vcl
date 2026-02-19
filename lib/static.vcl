@@ -1,17 +1,13 @@
 # static.vcl -- Static File Caching for Varnish
 
 sub vcl_recv {
-    if (req.method ~ "^(GET|HEAD)$" && req.url ~ "\.(jpg|jpeg|gif|png|ico|css|zip|tgz|gz|rar|bz2|pdf|txt|tar|wav|bmp|rtf|js|flv|swf|html|htm|woff|woff2|svg|webp|avif)(\?.*)?$") {
-        # Remove all file parameters from url
+    # Mark static files with the X-Static-File header, and remove any cookies
+    # X-Static-File is also used in vcl_backend_response to identify static files.
+    if (req.url ~ "^[^?]*\.(7z|avi|avif|bmp|bz2|css|csv|doc|docx|eot|flac|flv|gif|gz|ico|jpeg|jpg|js|less|mka|mkv|mov|mp3|mp4|mpeg|mpg|odt|ogg|ogm|opus|otf|pdf|png|ppt|pptx|rar|rtf|svg|svgz|swf|tar|tbz|tgz|ttf|txt|txz|wav|webm|webp|woff|woff2|xls|xlsx|xml|xz|zip)(\?.*)?$") {
+        # Remove query string for static files (cache key by path only)
         set req.url = regsub(req.url, "\?.*$", "");
-
-        # unset cookie only if no http auth
-        if (!req.http.Authorization) {
-            unset req.http.Cookie;
-        }
-
+        unset req.http.Cookie;
         set req.http.X-Static-File = "true";
-
         return(hash);
     }
 }

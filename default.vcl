@@ -1,7 +1,6 @@
-vcl 4.0;
+vcl 4.1;
 
 import std;
-import header;
 
 # Load configs
 include "/etc/varnish/conf/acl.vcl";
@@ -10,8 +9,8 @@ include "/etc/varnish/conf/backend.vcl";
 # Specific elements
 include "/etc/varnish/lib/xforward.vcl";
 include "/etc/varnish/lib/purge.vcl";
-include "/etc/lib/bigfiles.vcl";
-include "/etc/lib/static.vcl";
+include "/etc/varnish/lib/bigfiles.vcl";
+include "/etc/varnish/lib/static.vcl";
 
 # Include the environment vcl
-include "/etc/common.vcl";
+include "/etc/varnish/common.vcl";
