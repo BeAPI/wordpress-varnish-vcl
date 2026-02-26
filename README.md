@@ -7,7 +7,7 @@ Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Everyth
 - **WordPress-aware caching**: Bypass cache for logged-in users, AJAX, auth, and WooCommerce sessions
 - **Cookie normalization**: Strips tracking and analytics cookies (GA, WooTracker, etc.) for better hit ratio
 - **Purge / BAN**: PURGE and BAN methods restricted by ACL (localhost by default)
-- **Static & big files**: Dedicated handling for static assets; large files (>10 MB) delivered uncacheable
+- **Static & big files**: Dedicated handling for static assets (Cache-Control respected; 1d default when omitted); large files (>10 MB) delivered uncacheable
 - **WebSockets**: Pipe for `Upgrade: websocket` requests
 - **Tracking params**: Removes common UTM and campaign query parameters from the cache key
 - **Grace & TTL**: Configurable grace period, 500/404 handling, and Cache-Control respect

@@ -334,14 +334,25 @@ sub vcl_backend_response {
         return (deliver);
     }
 
-    # -- Static files: cache for 1 day --
+    # -- Static files: respect Cache-Control; default 1d only when backend sends no Cache-Control --
+    # When Cache-Control is present, do not force TTL (beresp.ttl may still be 0 here; Varnish
+    # applies max-age later). Only force 1d when the backend omits Cache-Control entirely.
     if (bereq.http.X-Static-File == "true") {
         unset beresp.http.Set-Cookie;
-        set beresp.http.X-Cacheable = "YES:Forced";
-        set beresp.ttl = 1d;
-        set beresp.grace = 1h;
-        set beresp.keep = 1d;
-        return (deliver);
+        if (beresp.http.Cache-Control ~ "private|no-store|no-cache") {
+            set beresp.http.X-Cacheable = "NO:Cache-Control";
+            set beresp.uncacheable = true;
+            set beresp.ttl = 120s;
+            return (deliver);
+        }
+        if (!beresp.http.Cache-Control) {
+            set beresp.http.X-Cacheable = "YES:Forced";
+            set beresp.ttl = 1d;
+            set beresp.grace = 1h;
+            set beresp.keep = 1d;
+            return (deliver);
+        }
+        # Backend sent Cache-Control (e.g. max-age) — fall through, Varnish keeps it
     }
 
     # -- Fix backend port leaking into redirect Location headers --
