@@ -3,50 +3,9 @@ vcl 4.1;
 import std;
 import directors;
 
-# ----------------------------------------------------------------------
-# ACL
-# ----------------------------------------------------------------------
-
-acl purge_acl {
-    "localhost";
-    "127.0.0.1";
-    "::1";
-}
-
-# ----------------------------------------------------------------------
-# Backend
-# ----------------------------------------------------------------------
-
-backend backend1 {
-    .host = "127.0.0.1";
-    .port = "8080";
-    .first_byte_timeout = 300s;
-    .connect_timeout    = 5s;
-    .between_bytes_timeout = 2s;
-    .probe = {
-        .url = "/";
-        .interval = 10s;
-        .timeout = 5s;
-        .window = 5;
-        .threshold = 3;
-    }
-}
-
-# Uncomment to enable imgproxy image processing (see README).
-# backend imgproxy {
-#     .host = "127.0.0.1";
-#     .port = "8089";
-#     .first_byte_timeout = 60s;
-#     .connect_timeout    = 5s;
-#     .between_bytes_timeout = 2s;
-#     .probe = {
-#         .url = "/health";
-#         .interval = 10s;
-#         .timeout = 5s;
-#         .window = 5;
-#         .threshold = 3;
-#     }
-# }
+include "config/acl.vcl";
+include "config/backends.vcl";
+include "config/imageproxy-loader.vcl";
 
 sub vcl_init {
     new backends = directors.round_robin();
@@ -61,13 +20,7 @@ sub vcl_recv {
     # -- Backend selection --
     set req.backend_hint = backends.backend();
 
-    # -- Route WordPress upload images through imgproxy --
-    # Uncomment to enable (requires the imgproxy backend above).
-    # Matches content/uploads/ and app/uploads/ paths with image extensions supported by imgproxy Community.
-    # URLs may include processing params before the path (e.g. /rs:fill:500:500/content/uploads/...).
-    # if (req.url ~ "^/(.*)?((content|app)/uploads/(sites/)?[0-9]+/.+)\.(jpg|jpeg|png|webp|gif|avif|tiff|tif|bmp|ico|heic|heif|svg)(\?.*)?$") {
-    #     set req.backend_hint = imgproxy;
-    # }
+    call imageproxy_recv;
 
     # -- X-Forwarded-For: keep only the first (client) IP behind a trusted proxy --
     if (req.http.X-Forwarded-For) {
@@ -247,32 +200,9 @@ sub vcl_recv {
 # vcl_backend_fetch
 # ----------------------------------------------------------------------
 
-# Uncomment to enable imgproxy URL rewriting (requires the imgproxy backend and routing above).
-# sub vcl_backend_fetch {
-#     # -- Rewrite URLs to imgproxy format before sending to the imgproxy backend --
-#     if (bereq.backend == imgproxy) {
-#         unset bereq.http.If-Modified-Since;
-#         unset bereq.http.ETag;
-#         unset bereq.http.Cache-Control;
-#
-#         # With processing params (e.g. /rs:fill:500:500/content|app/uploads/sites/2/img.jpg)
-#         if (bereq.url ~ "^/(.+)(/(content|app)/uploads/sites/[0-9]+/.+)$") {
-#             set bereq.url = regsub(bereq.url, "^/(.+)(/(content|app)/uploads/sites/[0-9]+/.+)$", "/insecure/\1/plain/local://\2");
-#         }
-#         # Without processing params, multisite (e.g. /content|app/uploads/sites/2/img.jpg)
-#         elsif (bereq.url ~ "^(/(content|app)/uploads/sites/[0-9]+/.+)$") {
-#             set bereq.url = regsub(bereq.url, "^(/(content|app)/uploads/sites/[0-9]+/.+)$", "/insecure/plain/local://\1");
-#         }
-#         # With processing params, single site (e.g. /rs:fill:500:500/content|app/uploads/2025/10/img.jpg)
-#         elsif (bereq.url ~ "^/(.+)(/(content|app)/uploads/[0-9]+/.+)$") {
-#             set bereq.url = regsub(bereq.url, "^/(.+)(/(content|app)/uploads/[0-9]+/.+)$", "/insecure/\1/plain/local://\2");
-#         }
-#         # Without processing params, single site (e.g. /content|app/uploads/2025/10/img.jpg)
-#         elsif (bereq.url ~ "^(/(content|app)/uploads/[0-9]+/.+)$") {
-#             set bereq.url = regsub(bereq.url, "^(/(content|app)/uploads/[0-9]+/.+)$", "/insecure/plain/local://\1");
-#         }
-#     }
-# }
+sub vcl_backend_fetch {
+    call imageproxy_backend_fetch;
+}
 
 # ----------------------------------------------------------------------
 # vcl_hash

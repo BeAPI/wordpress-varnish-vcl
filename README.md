@@ -1,6 +1,6 @@
 # WordPress Varnish VCL
 
-Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Everything lives in a single `default.vcl` file for simplicity.
+Varnish Cache VCL configuration optimized for WordPress and WooCommerce. The main flow stays in `default.vcl`. **Site-specific settings** (ACL, backends, imgproxy toggle and backend) live under `config/`. **Reusable VCL logic** stays under `vcl/includes/` (do not fork unless you need custom behaviour).
 
 ## Features
 
@@ -25,7 +25,16 @@ Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Everyth
 
 ```
 .
-├── default.vcl      # Single-file VCL: ACL, backend, recv, hash, backend_response, deliver, pipe
+├── default.vcl
+├── config/
+│   ├── acl.vcl
+│   ├── backends.vcl
+│   ├── imageproxy-loader.vcl      # enable/disable imgproxy (which includes are loaded)
+│   └── imageproxy-backend.vcl     # imgproxy host/port (used when imageproxy is enabled)
+├── vcl/
+│   └── includes/
+│       ├── imageproxy.disabled.vcl
+│       └── imageproxy.vcl         # imgproxy routing & URL rewrite logic (not host config)
 ├── CHANGELOG.md
 ├── README.md
 └── LICENSE
@@ -34,7 +43,7 @@ Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Everyth
 ## Installation
 
 1. Copy `default.vcl` to your server (e.g. `/etc/varnish/default.vcl`).
-2. Edit the `backend` and `acl purge_acl` sections at the top of the file to match your environment.
+2. Edit `config/backends.vcl` and `config/acl.vcl` to match your environment.
 3. Start or reload Varnish:
 
    ```bash
@@ -45,10 +54,10 @@ Varnish Cache VCL configuration optimized for WordPress and WooCommerce. Everyth
 
 ## Configuration
 
-All configuration is at the top of `default.vcl`:
+Core configuration is under `config/` and loaded by `default.vcl`:
 
-- **Backend**: Adjust `.host`, `.port`, and `.probe` in the `backend backend1` block.
-- **Purge ACL**: Add allowed IPs in the `acl purge_acl` block for PURGE/BAN.
+- **Backend**: Adjust `.host`, `.port`, and `.probe` in `config/backends.vcl` (`backend backend1`).
+- **Purge ACL**: Add allowed IPs in `config/acl.vcl` (`acl purge_acl`).
 - **Debug**: Send an `X-Debug: 1` request header to see `X-Cacheable` in the response.
 
 ### Default TTL when backend has no Cache-Control
@@ -66,11 +75,14 @@ After disabling, responses without `Cache-Control` keep `beresp.ttl = 0` and are
 
 Image processing via [imgproxy](https://imgproxy.net/) is supported but **disabled by default**. When enabled, WordPress upload images (`content/uploads/...`) are routed to a dedicated imgproxy backend and URLs are rewritten to the imgproxy format automatically.
 
-To enable, uncomment these three blocks in `default.vcl`:
+To enable:
 
-1. **Backend definition** — search for `backend imgproxy` and uncomment the block. Adjust `.host` and `.port` to match your imgproxy instance.
-2. **Routing in `vcl_recv`** — search for `set req.backend_hint = imgproxy` and uncomment the `if` block.
-3. **URL rewriting in `vcl_backend_fetch`** — search for `sub vcl_backend_fetch` and uncomment the entire sub.
+1. In `config/imageproxy-loader.vcl`, switch the includes:
+   - comment `include "vcl/includes/imageproxy.disabled.vcl";`
+   - uncomment `include "config/imageproxy-backend.vcl";` and `include "vcl/includes/imageproxy.vcl";`
+2. In `config/imageproxy-backend.vcl`, adjust `.host` and `.port` in `backend imgproxy` to match your imgproxy instance.
+
+This way, you only touch files under `config/` (not `default.vcl`).
 
 Supported image extensions (imgproxy Community): `jpg`, `jpeg`, `png`, `webp`, `gif`, `avif`, `tiff`, `tif`, `bmp`, `ico`, `heic`, `heif`, `svg`.
 
