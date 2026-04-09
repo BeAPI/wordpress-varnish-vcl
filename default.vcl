@@ -6,6 +6,8 @@ import directors;
 include "config/acl.vcl";
 include "config/backends.vcl";
 include "config/imageproxy-loader.vcl";
+include "vcl/includes/purge.vcl";
+include "vcl/includes/static.vcl";
 
 sub vcl_init {
     new backends = directors.round_robin();
@@ -27,36 +29,9 @@ sub vcl_recv {
         set req.http.X-Forwarded-For = regsub(req.http.X-Forwarded-For, "^([^,]+).*", "\1");
     }
 
-    # -- Purge / BAN --
-    # Tailored to the Proxy Cache Purge WordPress plugin.
-    # See https://wordpress.org/plugins/varnish-http-purge/
-    if (req.method == "PURGE" || req.method == "BAN") {
-        if (!std.ip(regsub(req.http.X-Forwarded-For, "[, ].*$", ""), client.ip) ~ purge_acl) {
-            return (synth(405, "PURGE not allowed for this IP address"));
-        }
+    call purge_recv;
 
-        if (req.http.X-Purge-Method == "regex") {
-            ban("obj.http.x-url ~ " + req.url + " && obj.http.x-host == " + req.http.host);
-            return (synth(200, "Purged"));
-        }
-
-        if (req.http.X-Purge-Method == "all") {
-            ban("obj.http.x-url ~ / && obj.http.x-host == " + req.http.host);
-            return (synth(200, "Purged all caches"));
-        }
-
-        ban("obj.http.x-url == " + req.url + " && obj.http.x-host == " + req.http.host);
-        return (synth(200, "Purged"));
-    }
-
-    # -- Static files: strip cookies, mark with X-Static-File, skip to hash --
-    # Extension list must match the one in vcl_hash.
-    if (req.url ~ "^[^?]*\.(7z|avi|avif|bmp|bz2|css|csv|doc|docx|eot|flac|flv|gif|gz|ico|jpeg|jpg|js|less|mka|mkv|mov|mp3|mp4|mpeg|mpg|odt|ogg|ogm|opus|otf|pdf|png|ppt|pptx|rar|rtf|svg|svgz|swf|tar|tbz|tgz|ttf|txt|txz|wav|webm|webp|woff|woff2|xls|xlsx|xml|xz|zip)(\?.*)?$") {
-        set req.url = regsub(req.url, "\?.*$", "");
-        unset req.http.Cookie;
-        set req.http.X-Static-File = "true";
-        return (hash);
-    }
+    call static_recv;
 
     # -- Normalize Accept-Encoding to reduce cache fragmentation (br > gzip > none) --
     if (req.http.Accept-Encoding) {
@@ -210,45 +185,21 @@ sub vcl_backend_fetch {
 
 sub vcl_hash {
     /**
-    Cache key for pages:
-    - Proto (http/https)
-    - Content encoding (br, gzip — normalized in vcl_recv)
-    - URL + host (Varnish default)
+    Cache key for pages: proto, Accept-Encoding (normalized in vcl_recv), then
+    Varnish default (host + URL).
 
-    Cache key for static files:
-    - Proto (http/https)
-    - Content encoding (br, gzip — normalized in vcl_recv)
-    - URL path only (no host — shared across domains)
+    Static files: see vcl/includes/static.vcl (path-only hash for multisite).
     **/
 
-    # -- Protocol variation --
     if (req.http.X-Forwarded-Proto) {
         hash_data(req.http.X-Forwarded-Proto);
     }
 
-    # -- Encoding variation --
     if (req.http.Accept-Encoding) {
         hash_data(req.http.Accept-Encoding);
     }
 
-    # -- Page vs static file hashing --
-    # Extension list must match the vcl_recv static block.
-    #
-    # By default, static files are hashed by URL path only (no host), so the same
-    # asset served from domain1.com and domain2.com shares a single cache entry.
-    # This is optimal for WordPress multisite with shared uploads (e.g. /app/uploads/).
-    #
-    # To cache static files per domain instead, add hash_data(req.http.host) below:
-    #       hash_data(req.url);
-    #       hash_data(req.http.host);
-    #       return (lookup);
-    #
-    # Non-static files fall through without returning, so Varnish appends its
-    # default hash (host + URL) automatically.
-    if (req.url ~ "\.(7z|avi|avif|bmp|bz2|css|csv|doc|docx|eot|flac|flv|gif|gz|ico|jpeg|jpg|js|less|mka|mkv|mov|mp3|mp4|mpeg|mpg|odt|ogg|ogm|opus|otf|pdf|png|ppt|pptx|rar|rtf|svg|svgz|swf|tar|tbz|tgz|ttf|txt|txz|wav|webm|webp|woff|woff2|xls|xlsx|xml|xz|zip)(\?.*)?$") {
-        hash_data(req.url);
-        return (lookup);
-    }
+    call static_hash;
 }
 
 # ----------------------------------------------------------------------
@@ -264,26 +215,7 @@ sub vcl_backend_response {
         return (deliver);
     }
 
-    # -- Static files: respect Cache-Control; default 1d only when backend sends no Cache-Control --
-    # When Cache-Control is present, do not force TTL (beresp.ttl may still be 0 here; Varnish
-    # applies max-age later). Only force 1d when the backend omits Cache-Control entirely.
-    if (bereq.http.X-Static-File == "true") {
-        unset beresp.http.Set-Cookie;
-        if (beresp.http.Cache-Control ~ "private|no-store|no-cache") {
-            set beresp.http.X-Cacheable = "NO:Cache-Control";
-            set beresp.uncacheable = true;
-            set beresp.ttl = 120s;
-            return (deliver);
-        }
-        if (!beresp.http.Cache-Control) {
-            set beresp.http.X-Cacheable = "YES:Forced";
-            set beresp.ttl = 1d;
-            set beresp.grace = 1h;
-            set beresp.keep = 1d;
-            return (deliver);
-        }
-        # Backend sent Cache-Control (e.g. max-age) — fall through, Varnish keeps it
-    }
+    call static_backend_response;
 
     # -- Fix backend port leaking into redirect Location headers --
     if (beresp.status == 301 || beresp.status == 302) {
@@ -303,6 +235,14 @@ sub vcl_backend_response {
     if (beresp.http.Set-Cookie) {
         set beresp.http.X-Cacheable = "NO:Got Cookies";
         set beresp.ttl = 0s;
+        return (deliver);
+    }
+
+    # -- Never cache temporary redirects (302); they must not use the default TTL below --
+    if (beresp.status == 302) {
+        set beresp.http.X-Cacheable = "NO:302";
+        set beresp.uncacheable = true;
+        set beresp.ttl = 120s;
         return (deliver);
     }
 
