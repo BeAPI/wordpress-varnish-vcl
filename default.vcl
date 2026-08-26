@@ -246,6 +246,14 @@ sub vcl_backend_response {
         return (deliver);
     }
 
+    # -- Never cache forbidden responses (403); access may vary per client --
+    if (beresp.status == 403) {
+        set beresp.http.X-Cacheable = "NO:403";
+        set beresp.uncacheable = true;
+        set beresp.ttl = 120s;
+        return (deliver);
+    }
+
     # -- Default TTL when the backend sends no Cache-Control --
     # When the backend omits Cache-Control, we force a 1h TTL so responses are cached.
     # To disable: comment out the block below. Responses without Cache-Control will then
