@@ -98,6 +98,7 @@ URL rewriting handles both single-site and multisite WordPress installs, with or
 
 - **Pages**: Protocol (X-Forwarded-Proto), Accept-Encoding (normalized), optional Cookie (when WordPress-related cookies are present), plus default (host, URL, etc.).
 - **Static files**: Protocol, Accept-Encoding (normalized), and URL path only (no cookie, **no host** in hash).
+  Exception: `.txt` and `.xml` files (`robots.txt`, XML sitemaps) also include the host, since WordPress generates them per site.
 
 ### Static files: shared vs per-domain cache
 

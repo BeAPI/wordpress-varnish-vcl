@@ -207,6 +207,12 @@ sub vcl_hash {
 # ----------------------------------------------------------------------
 
 sub vcl_backend_response {
+    # -- Inject URL and Host for asynchronous banning --
+    # Must run before any early return (deliver), otherwise the object cannot be banned/purged
+    # (e.g. static files without Cache-Control such as robots.txt or XML sitemaps).
+    set beresp.http.x-url = bereq.url;
+    set beresp.http.x-host = bereq.http.host;
+
     # -- Bypass cache for files > 10 MB and stream them directly --
     if (std.integer(beresp.http.Content-Length, 0) > 10485760) {
         set beresp.uncacheable = true;
@@ -221,10 +227,6 @@ sub vcl_backend_response {
     if (beresp.status == 301 || beresp.status == 302) {
         set beresp.http.Location = regsub(beresp.http.Location, ":[0-9]+", "");
     }
-
-    # -- Inject URL and Host for asynchronous banning --
-    set beresp.http.x-url = bereq.url;
-    set beresp.http.x-host = bereq.http.host;
 
     # -- Ensure grace is at least 2 hours --
     if (beresp.grace < 2h) {

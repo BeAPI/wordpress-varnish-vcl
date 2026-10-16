@@ -10,11 +10,18 @@ sub static_recv {
     }
 }
 
-# Page vs static: static uses URL path only (no host) for shared multisite uploads.
+# Page vs static: static uses URL path only (no host) for shared multisite uploads,
+# except .txt/.xml (robots.txt, sitemaps) which are hashed per host.
 # To cache static per domain: hash_data(req.url); hash_data(req.http.host); return (lookup);
 sub static_hash {
     if (req.url ~ "\.(7z|avi|avif|bmp|bz2|css|csv|doc|docx|eot|flac|flv|gif|gz|ico|jpeg|jpg|js|less|mka|mkv|mov|mp3|mp4|mpeg|mpg|odt|ogg|ogm|opus|otf|pdf|png|ppt|pptx|rar|rtf|svg|svgz|swf|tar|tbz|tgz|ttf|txt|txz|wav|webm|webp|woff|woff2|xls|xlsx|xml|xz|zip)(\?.*)?$") {
         hash_data(req.url);
+
+        # robots.txt and XML sitemaps are generated per site (multisite): cache them per host.
+        if (req.url ~ "\.(txt|xml)$") {
+            hash_data(req.http.host);
+        }
+
         return (lookup);
     }
 }

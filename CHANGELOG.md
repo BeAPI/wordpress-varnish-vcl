@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Purge of static files**: Set `x-url` / `x-host` before the static early `return (deliver)` in `vcl_backend_response`, so static objects without `Cache-Control` (e.g. `robots.txt`, XML sitemaps) can be banned/purged
+- **robots.txt / sitemaps in multisite**: Hash `.txt` and `.xml` static files per host, so each site gets its own `robots.txt` and sitemaps
 - **Hash for static files**: Include `X-Forwarded-Proto` and `Accept-Encoding` in cache key so HTTP/HTTPS and gzip/br variants are stored separately
 - **Cookie handling**: Only run cookie-stripping when `Cookie` header is present to avoid sending an empty Cookie header to the backend
 - **Purge comment**: Corrected comment (403 Forbidden instead of 405)
